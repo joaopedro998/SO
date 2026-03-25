@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Banco Concorrente</title>
+
+<style>
+
+body{
+margin:0;
+font-family:Arial;
+background:#f2f4f8;
+}
+
+.topbar{
+background:#4f46e5;
+color:white;
+padding:20px;
+font-size:24px;
+font-weight:bold;
+}
+
+.center{
+height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+}
+
+.card{
+background:white;
+padding:30px;
+border-radius:15px;
+box-shadow:0px 10px 25px rgba(0,0,0,0.1);
+width:350px;
+}
+
+.container{
+width:400px;
+margin:40px auto;
+display:none;
+}
+
+input, select, textarea {
+width:100%;
+max-width:100%;
+box-sizing:border-box;
+padding:12px 14px;
+margin-top:10px;
+border-radius:10px;
+border:1px solid #cbd5e1;
+background:#fff;
+font-size:16px;
+color:#1f2937;
+transition: all 0.2s ease;
+}
+
+input:focus, select:focus, textarea:focus {
+outline:none;
+border-color:#4f46e5;
+box-shadow:0 0 0 3px rgba(79,70,229,0.16);
+}
+
+button{
+padding:15px;
+margin-top:15px;
+background:#4f46e5;
+color:white;
+border:none;
+border-radius:10px;
+cursor:pointer;
+}
+
+.log{
+background:black;
+color:#00ff9c;
+padding:15px;
+height:250px;
+overflow:auto;
+font-family:monospace;
+border-radius:10px;
+}
+
+.saldo{
+font-size:32px;
+font-weight:bold;
+}
+
+.negativo{
+color:red;
+}
+
+.alerta{
+display:none;
+background:#fee2e2;
+color:#991b1b;
+padding:15px;
+margin-top:15px;
+border-radius:10px;
+font-weight:bold;
+text-align:center;
+}
+
+</style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen" class="center">
+<div class="card">
+<h2>Bem vindo ao Banco de C012</h2>
+Digite o saldo inicial
+<input id="saldoInicialLogin" type="number" min="0" step="0.01" maxlength="12" placeholder="0.00" />
+<button onclick="entrar()">Entrar</button>
+</div>
+</div>
+
+<!-- BANCO -->
+<div id="bankScreen">
+
+<div class="topbar">
+Banco Concorrente
+</div>
+
+<div class="container" id="bankContainer">
+
+<div class="card">
+Saldo Atual
+<div id="saldoBox" class="saldo">R$ 0.00</div>
+
+<div id="alerta" class="alerta">
+⚠️ SISTEMA BURLADO — SALDO NEGATIVO
+</div>
+
+</div>
+
+<div class="card">
+
+Valor do PIX
+<input id="valor" type="number" min="0" step="0.01" maxlength="12" placeholder="0.00" />
+
+Quantidade de PIX simultâneos
+<input id="qtd" type="number" min="1" step="1" maxlength="5" placeholder="1" />
+
+<button onclick="executar()">Enviar PIX</button>
+
+<button onclick="resetar()" style="background:#dc2626;margin-top:10px;">
+Resetar Sistema
+</button>
+
+</div>
+
+<div class="card">
+Logs
+<div id="log" class="log"></div>
+</div>
+
+</div>
+</div>
+
+<script>
+
+let saldoInicialGlobal = 0
+let saldoAtualGlobal = 0
+
+function entrar(){
+
+saldoInicialGlobal =
+document.getElementById("saldoInicialLogin").value
+
+saldoAtualGlobal = parseFloat(saldoInicialGlobal)
+
+document.getElementById("loginScreen").style.display = "none"
+document.getElementById("bankContainer").style.display = "block"
+
+document.getElementById("saldoBox").innerText =
+"R$ " + saldoAtualGlobal.toFixed(2)
+
+}
+
+async function executar(){
+
+let valor = document.getElementById("valor").value
+let qtd = document.getElementById("qtd").value
+
+let res = await fetch("/executar",{
+method:"POST",
+headers:{ "Content-Type":"application/json"},
+body: JSON.stringify({
+saldo: saldoAtualGlobal,
+valor: valor,
+qtd: qtd
+})
+})
+
+let data = await res.json()
+
+document.getElementById("log").innerText =
+data.logs.join("\n")
+
+let saldoFinal = data.saldo_final
+
+saldoAtualGlobal = saldoFinal
+
+let box = document.getElementById("saldoBox")
+let alerta = document.getElementById("alerta")
+
+box.innerText = "R$ " + saldoFinal.toFixed(2)
+
+if(saldoFinal < 0){
+box.classList.add("negativo")
+alerta.style.display = "block"
+}else{
+box.classList.remove("negativo")
+alerta.style.display = "none"
+}
+
+}
+
+function resetar(){
+
+saldoInicialGlobal = 0
+saldoAtualGlobal = 0
+
+document.getElementById("loginScreen").style.display = "flex"
+document.getElementById("bankContainer").style.display = "none"
+
+document.getElementById("log").innerText = ""
+
+document.getElementById("valor").value = ""
+document.getElementById("qtd").value = ""
+document.getElementById("saldoInicialLogin").value = ""
+
+document.getElementById("saldoBox").innerText = "R$ 0.00"
+
+document.getElementById("saldoBox").classList.remove("negativo")
+
+document.getElementById("alerta").style.display = "none"
+
+}
+
+</script>
+
+</body>
+</html>
