@@ -4,7 +4,7 @@ from flask import Flask, request, jsonify, render_template
 # Import threading para usar múltiplas threads
 import threading
 
-# Importa time para usar os delays
+# Importa time para usar os delays e medir tempo
 import time
 
 
@@ -12,7 +12,7 @@ import time
 app = Flask(__name__)
 
 
-# Variável global doo saldo da conta
+# Variável global do saldo da conta
 saldo_conta = 0.0
 
 # Lista para os logs das operações
@@ -34,7 +34,7 @@ def processar_pix(id_thread, valor_pix):
     log(f"[Thread {id_thread}] Iniciando PIX de {valor_pix}")
 
     # Delay de processamento para rodar todas as threads
-    time.sleep(0.5)
+    time.sleep(0.01)
 
     # Verifica se tem saldo suficiente
     if saldo_conta >= valor_pix:
@@ -43,9 +43,9 @@ def processar_pix(id_thread, valor_pix):
         log(f"[Thread {id_thread}] Saldo OK ({saldo_conta}) aguardando horário...")
 
         # Delay que simula o agendamento de todos os pix para o mesmo horário
-        time.sleep(3)
+        time.sleep(0.01)
 
-        # Threads descontando o valor do pix diretamento do saldo lido por elas
+        # Threads descontando o valor do pix diretamente do saldo lido por elas
         saldo_conta -= valor_pix
 
         # Log mostrando novo saldo
@@ -73,6 +73,9 @@ def executar():
     
     # Limpando a lista de logs
     logs = []
+
+    # ⏱️ INÍCIO DA MEDIÇÃO DE TEMPO
+    inicio = time.time()
     
     # Recebe os dados inseridos em JSON
     data = request.json
@@ -112,6 +115,13 @@ def executar():
         t.join()
 
 
+    # ⏱️ FIM DA MEDIÇÃO DE TEMPO
+    fim = time.time()
+
+    # ⏱️ CÁLCULO DO TEMPO TOTAL DE EXECUÇÃO
+    tempo_execucao = fim - inicio
+
+
     # Retorna resultado para o frontend
     return jsonify({
 
@@ -119,7 +129,10 @@ def executar():
         "logs": logs,
 
         # Retorna saldo final da conta
-        "saldo_final": saldo_conta
+        "saldo_final": saldo_conta,
+
+        # Retorna tempo total de execução (arredondado)
+        "tempo_execucao": round(tempo_execucao, 4)
     })
 
 
