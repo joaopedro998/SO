@@ -75,32 +75,34 @@ class Tarefa:
 def processar_pix(tarefa, usar_lock):
     global saldo_conta
 
-    # ID da thread atual (apenas para log)
     worker_id = threading.get_ident()
-
-    # Tempo proporcional ao valor (simula processamento)
     tempo_processamento = tarefa.valor / 2000
 
     log(f"[Worker {worker_id}] ▶ Executando T{tarefa.id} (R${tarefa.valor})")
-    log(f"[Worker {worker_id}] ⏱ Tempo estimado: {tempo_processamento:.2f}s")
 
-    # Simula tempo de execução
+    # Threads esperam tempos diferentes para simular a rede
     time.sleep(tempo_processamento)
 
-    # Se lock ativado → protege região crítica
     if usar_lock:
         lock.acquire()
 
     try:
-        # Região crítica (acesso ao saldo compartilhado)
+        # ---- INÍCIO DA REGIÃO CRÍTICA ----
         if saldo_conta >= tarefa.valor:
+            
+            # 🔥 O TRUQUE PARA FORÇAR O BUG 🔥
+            # 0.5 segundos é tempo suficiente para que TODAS as outras threads 
+            # cheguem aqui e também passem no 'if' achando que tem saldo, 
+            # já que nenhuma delas subtraiu o valor ainda.
+            time.sleep(0.5)
+            
             saldo_conta -= tarefa.valor
-            log(f"[Worker {worker_id}] ✔ T{tarefa.id} concluída → saldo: {saldo_conta}")
+            log(f"[Worker {worker_id}] ✔ T{tarefa.id} concluída → saldo: {saldo_conta:.2f}")
         else:
             log(f"[Worker {worker_id}] ❌ T{tarefa.id} falhou (saldo insuficiente)")
+        # ---- FIM DA REGIÃO CRÍTICA ----
 
     finally:
-        # Libera lock
         if usar_lock:
             lock.release()
 
