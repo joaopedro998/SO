@@ -90,7 +90,6 @@ def processar_pix(tarefa, usar_lock):
         # ---- INÍCIO DA REGIÃO CRÍTICA ----
         if saldo_conta >= tarefa.valor:
             
-            # 🔥 O TRUQUE PARA FORÇAR O BUG 🔥
             # 0.5 segundos é tempo suficiente para que TODAS as outras threads 
             # cheguem aqui e também passem no 'if' achando que tem saldo, 
             # já que nenhuma delas subtraiu o valor ainda.
