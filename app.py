@@ -1,127 +1,258 @@
-# Import Flask
+# =========================
+# IMPORTS
+# =========================
+# Flask → cria a API/web
+# threading → permite executar várias tarefas ao mesmo tempo (threads)
+# time → simula tempo de processamento
+# heapq → estrutura de fila de prioridade (usada no SJF e PS)
 from flask import Flask, request, jsonify, render_template
-
-# Import threading para usar múltiplas threads
 import threading
-
-# Importa time para usar os delays
 import time
+import heapq
 
 
-# Cria a app Flask
+# =========================
+# INICIALIZAÇÃO DO APP
+# =========================
 app = Flask(__name__)
 
 
-# Variável global doo saldo da conta
+# =========================
+# VARIÁVEIS GLOBAIS
+# =========================
+# saldo_conta → recurso compartilhado entre threads (ponto crítico!)
+# logs → lista de mensagens exibidas no front
 saldo_conta = 0.0
-
-# Lista para os logs das operações
 logs = []
 
 
-# Função para registrar mensagens no log
+# =========================
+# LOCKS (CONTROLE DE CONCORRÊNCIA)
+# =========================
+# lock → protege o saldo (evita race condition)
+# fila_lock → protege o acesso à fila (evita duas threads pegarem a mesma tarefa)
+lock = threading.Lock()
+fila_lock = threading.Lock()
+
+
+# =========================
+# CENÁRIOS PRONTOS
+# =========================
+# Cada cenário representa vários PIX a serem executados
+CENARIOS = {
+    "cenario1": [500, 350, 175, 100],
+    "cenario2": [10, 10, 10, 10, 10],
+    "cenario3": [800, 50, 60, 70, 1000]
+}
+
+
+# =========================
+# FUNÇÃO DE LOG
+# =========================
+# Centraliza os logs para facilitar exibição no front
 def log(msg):
     logs.append(msg)
 
 
-# Função que será executada por cada thread simulando um PIX
-def processar_pix(id_thread, valor_pix):
+# =========================
+# CLASSE TAREFA
+# =========================
+# Representa um PIX
+class Tarefa:
+    def __init__(self, id, valor, prioridade):
+        self.id = id              # identificador da tarefa
+        self.valor = valor        # valor do PIX
+        self.prioridade = prioridade  # usado no heap (SJF ou PS)
 
-    # Usando a variavel global do saldo
+    # Define como comparar tarefas (necessário para heapq)
+    def __lt__(self, other):
+        return self.prioridade < other.prioridade
+
+
+# =========================
+# PROCESSAMENTO DO PIX
+# =========================
+def processar_pix(tarefa, usar_lock):
     global saldo_conta
-    
-    # Log indicando que a thread começou
-    log(f"[Thread {id_thread}] Iniciando PIX de {valor_pix}")
 
-    # Delay de processamento para rodar todas as threads
-    time.sleep(0.5)
+    # ID da thread atual (apenas para log)
+    worker_id = threading.get_ident()
 
-    # Verifica se tem saldo suficiente
-    if saldo_conta >= valor_pix:
+    # Tempo proporcional ao valor (simula processamento)
+    tempo_processamento = tarefa.valor / 2000
 
-        # Log do saldo OK
-        log(f"[Thread {id_thread}] Saldo OK ({saldo_conta}) aguardando horário...")
+    log(f"[Worker {worker_id}] ▶ Executando T{tarefa.id} (R${tarefa.valor})")
+    log(f"[Worker {worker_id}] ⏱ Tempo estimado: {tempo_processamento:.2f}s")
 
-        # Delay que simula o agendamento de todos os pix para o mesmo horário
-        time.sleep(3)
+    # Simula tempo de execução
+    time.sleep(tempo_processamento)
 
-        # Threads descontando o valor do pix diretamento do saldo lido por elas
-        saldo_conta -= valor_pix
+    # Se lock ativado → protege região crítica
+    if usar_lock:
+        lock.acquire()
 
-        # Log mostrando novo saldo
-        log(f"[Thread {id_thread}] PIX enviado. Novo saldo: {saldo_conta}")
+    try:
+        # Região crítica (acesso ao saldo compartilhado)
+        if saldo_conta >= tarefa.valor:
+            saldo_conta -= tarefa.valor
+            log(f"[Worker {worker_id}] ✔ T{tarefa.id} concluída → saldo: {saldo_conta}")
+        else:
+            log(f"[Worker {worker_id}] ❌ T{tarefa.id} falhou (saldo insuficiente)")
 
-    else:
-        # Caso não tenha saldo suficiente
-        log(f"[Thread {id_thread}] ERRO saldo insuficiente")
+    finally:
+        # Libera lock
+        if usar_lock:
+            lock.release()
 
 
-# Rota principal do site
+# =========================
+# WORKER (THREAD CONSUMIDORA)
+# =========================
+def worker(fila, algoritmo, usar_lock):
+
+    worker_id = threading.get_ident()
+
+    log(f"[Worker {worker_id}] 🟢 iniciado")
+
+    while True:
+        # Protege acesso à fila
+        with fila_lock:
+
+            # Se não tem mais tarefas → thread encerra
+            if not fila:
+                log(f"[Worker {worker_id}] 🔴 fila vazia → encerrando")
+                return
+
+            # Seleção da tarefa conforme algoritmo
+            if algoritmo == "fcfs":
+                tarefa = fila.pop(0)           # ordem de chegada
+            else:
+                tarefa = heapq.heappop(fila)  # menor prioridade primeiro
+
+            log(f"[Worker {worker_id}] → pegou T{tarefa.id} (R${tarefa.valor})")
+
+        # Processa fora do lock da fila (importante!)
+        processar_pix(tarefa, usar_lock)
+
+
+# =========================
+# ROTAS
+# =========================
+
+# Página principal
 @app.route("/")
 def home():
-
-    # Arquivo HTML da interface
     return render_template("index.html")
 
 
-# Rota que executa a simulação
+# Execução da simulação
 @app.route("/executar", methods=["POST"])
 def executar():
 
-    # Indicando variaveis globais do saldo e logs
     global saldo_conta, logs
-    
-    # Limpando a lista de logs
+
     logs = []
-    
-    # Recebe os dados inseridos em JSON
+    inicio = time.time()
+
     data = request.json
-    
-    # Define o saldo inicial da conta
+
+    # Define saldo inicial
     saldo_conta = float(data["saldo"])
 
-    # Valor de cada PIX
-    valor_pix = float(data["valor"])
+    # Escolhe cenário
+    cenario = data.get("cenario", "cenario1")
+    valores = CENARIOS.get(cenario, CENARIOS["cenario1"])
 
-    # Quantidade de PIX ao mesmo tempo
-    qtd = int(data["qtd"])
+    algoritmo = data.get("algoritmo", "fcfs")
+    usar_lock = data.get("lock", True)
 
+    fila = []
 
-    # Lista para armazenar as threads
+    # =========================
+    # CABEÇALHO (LOG VISUAL)
+    # =========================
+    log("===================================")
+    log(f"🚀 CENÁRIO: {cenario.upper()}")
+    log(f"🧠 ALGORITMO: {algoritmo.upper()}")
+    log(f"🔒 LOCK: {'ATIVO' if usar_lock else 'DESATIVADO'}")
+    log("===================================\n")
+
+    # =========================
+    # CRIAÇÃO DAS TAREFAS
+    # =========================
+    for i, valor in enumerate(valores):
+
+        valor = float(valor)
+
+        # Define prioridade conforme algoritmo
+        if algoritmo == "sjf":
+            prioridade = valor          # menor valor primeiro
+        elif algoritmo == "ps":
+            prioridade = -valor         # maior valor primeiro
+        else:
+            prioridade = i              # FCFS
+
+        tarefa = Tarefa(i + 1, valor, prioridade)
+
+        # Insere na fila
+        if algoritmo == "fcfs":
+            fila.append(tarefa)
+        else:
+            heapq.heappush(fila, tarefa)
+
+    # =========================
+    # VISUALIZAÇÃO DA FILA
+    # =========================
+    log("📦 FILA (ORDEM DE EXECUÇÃO)")
+    log("-----------------------------------")
+
+    if algoritmo == "fcfs":
+        for t in fila:
+            log(f"→ T{t.id} | R${t.valor}")
+    else:
+        # Copia para não destruir a fila original
+        fila_temp = fila.copy()
+        heapq.heapify(fila_temp)
+
+        while fila_temp:
+            t = heapq.heappop(fila_temp)
+            log(f"→ T{t.id} | R${t.valor}")
+
+    log("\n⚙️ INICIANDO WORKERS")
+    log("-----------------------------------")
+
+    # =========================
+    # CRIAÇÃO DAS THREADS
+    # =========================
     threads = []
 
-
-    # Cria várias threads simulando vários PIX ao mesmo tempo
-    for i in range(qtd):
-
-        # Cria a thread
-        t = threading.Thread(
-            target=processar_pix,
-            args=(i+1, valor_pix)
-        )
-
-        # Adiciona na lista
+    for _ in range(5):  # 5 workers concorrentes
+        t = threading.Thread(target=worker, args=(fila, algoritmo, usar_lock))
         threads.append(t)
-
-        # Inicia a thread
         t.start()
 
-
-    # Aguarda todas as threads terminarem
+    # Aguarda todas terminarem
     for t in threads:
         t.join()
 
+    fim = time.time()
 
-    # Retorna resultado para o frontend
+    # =========================
+    # RESULTADO FINAL
+    # =========================
+    log("\n===================================")
+    log(f"💰 SALDO FINAL: {saldo_conta}")
+    log(f"⏱ TEMPO TOTAL: {round(fim - inicio, 4)}s")
+    log("===================================")
+
     return jsonify({
-
-        # Retorna os logs das threads
         "logs": logs,
-
-        # Retorna saldo final da conta
-        "saldo_final": saldo_conta
+        "saldo_final": saldo_conta,
+        "tempo_execucao": round(fim - inicio, 4)
     })
 
 
-# Inicia o servidor Flask
-app.run(debug=True)
+# =========================
+# START
+# =========================
+app.run(debug=False)
