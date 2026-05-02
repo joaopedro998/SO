@@ -1,9 +1,9 @@
 # =========================
 # IMPORTS
 # =========================
-# Flask → cria a API/web
-# threading → permite executar várias tarefas ao mesmo tempo (threads)
-# time → simula tempo de processamento
+# Flask → cria a WEB
+# threading → permite executar várias threads
+# time → simulação do tempo dos processos
 # heapq → estrutura de fila de prioridade (usada no SJF e PS)
 from flask import Flask, request, jsonify, render_template
 import threading
@@ -20,16 +20,16 @@ app = Flask(__name__)
 # =========================
 # VARIÁVEIS GLOBAIS
 # =========================
-# saldo_conta → recurso compartilhado entre threads (ponto crítico!)
-# logs → lista de mensagens exibidas no front
+# saldo_conta → variavel do saldo da conta
+# logs → lista de mensagens exibidas
 saldo_conta = 0.0
 logs = []
 
 
 # =========================
-# LOCKS (CONTROLE DE CONCORRÊNCIA)
+# LOCKS
 # =========================
-# lock → protege o saldo (evita race condition)
+# lock → protege o saldo (evita race condition quando habilitado)
 # fila_lock → protege o acesso à fila (evita duas threads pegarem a mesma tarefa)
 lock = threading.Lock()
 fila_lock = threading.Lock()
@@ -55,9 +55,8 @@ def log(msg):
 
 
 # =========================
-# CLASSE TAREFA
+# CLASSE TAREFA (PIX)
 # =========================
-# Representa um PIX
 class Tarefa:
     def __init__(self, id, valor, prioridade):
         self.id = id              # identificador da tarefa
@@ -74,32 +73,26 @@ class Tarefa:
 # =========================
 def processar_pix(tarefa, usar_lock):
     global saldo_conta
-
     worker_id = threading.get_ident()
     tempo_processamento = tarefa.valor / 2000
 
     log(f"[Worker {worker_id}] ▶ Executando T{tarefa.id} (R${tarefa.valor})")
 
-    # Threads esperam tempos diferentes para simular a rede
-    time.sleep(tempo_processamento)
-
     if usar_lock:
         lock.acquire()
 
     try:
-        # ---- INÍCIO DA REGIÃO CRÍTICA ----
+        # Garantia que a thread fique esperando a de maior prioridade terminar antes
+        time.sleep(tempo_processamento)
+
         if saldo_conta >= tarefa.valor:
-            
-            # 0.5 segundos é tempo suficiente para que TODAS as outras threads 
-            # cheguem aqui e também passem no 'if' achando que tem saldo, 
-            # já que nenhuma delas subtraiu o valor ainda.
-            time.sleep(0.5)
+            # Sleep para o cenario caotico garantir o bug de concorrencia
+            time.sleep(0.5) 
             
             saldo_conta -= tarefa.valor
             log(f"[Worker {worker_id}] ✔ T{tarefa.id} concluída → saldo: {saldo_conta:.2f}")
         else:
             log(f"[Worker {worker_id}] ❌ T{tarefa.id} falhou (saldo insuficiente)")
-        # ---- FIM DA REGIÃO CRÍTICA ----
 
     finally:
         if usar_lock:
@@ -107,7 +100,7 @@ def processar_pix(tarefa, usar_lock):
 
 
 # =========================
-# WORKER (THREAD CONSUMIDORA)
+# WORKER
 # =========================
 def worker(fila, algoritmo, usar_lock):
 
@@ -170,7 +163,7 @@ def executar():
     fila = []
 
     # =========================
-    # CABEÇALHO (LOG VISUAL)
+    # CABEÇALHO do LOG
     # =========================
     log("===================================")
     log(f"🚀 CENÁRIO: {cenario.upper()}")
@@ -227,7 +220,7 @@ def executar():
     # =========================
     threads = []
 
-    for _ in range(5):  # 5 workers concorrentes
+    for _ in range(5):  # 5 workers (Com base no numero de valores que temos em casa cenário padrão)
         t = threading.Thread(target=worker, args=(fila, algoritmo, usar_lock))
         threads.append(t)
         t.start()
